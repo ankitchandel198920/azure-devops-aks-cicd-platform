@@ -1,0 +1,10 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+node_modules/
+coverage/
+test-results.xml
+*.tgz
+.env

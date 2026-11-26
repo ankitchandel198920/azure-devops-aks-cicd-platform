@@ -1,0 +1,37 @@
+parameters:
+  - name: azureSubscription
+    type: string
+  - name: resourceGroup
+    type: string
+  - name: aksClusterName
+    type: string
+  - name: namespace
+    type: string
+  - name: releaseName
+    type: string
+  - name: dependsOnJob
+    type: string
+
+jobs:
+  - job: SmokeTest_${{ parameters.namespace }}
+    displayName: "Post-Deployment Smoke Tests (${{ parameters.namespace }})"
+    dependsOn: ${{ parameters.dependsOnJob }}
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - checkout: self
+      - task: AzureCLI@2
+        displayName: Execute Cluster Smoke Tests
+        inputs:
+          azureSubscription: "${{ parameters.azureSubscription }}"
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -euo pipefail
+            az aks get-credentials \
+              --resource-group "${{ parameters.resourceGroup }}" \
+              --name "${{ parameters.aksClusterName }}" \
+              --overwrite-existing
+            kubelogin convert-kubeconfig -l azurecli
+            chmod +x ./scripts/smoke-test.sh
+            ./scripts/smoke-test.sh "${{ parameters.namespace }}" "${{ parameters.releaseName }}"

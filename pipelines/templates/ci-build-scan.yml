@@ -1,0 +1,100 @@
+parameters:
+  - name: serviceName
+    type: string
+  - name: servicePath
+    type: string
+  - name: imageName
+    type: string
+  - name: acrServiceConnection
+    type: string
+  - name: acrLoginServer
+    type: string
+  - name: sonarServiceConnection
+    type: string
+  - name: imageTag
+    type: string
+  - name: pushImage
+    type: boolean
+    default: true
+
+jobs:
+  - job: BuildTestScan_${{ replace(parameters.serviceName, '-', '_') }}
+    displayName: "Build, Test & Scan (${{ parameters.serviceName }})"
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - checkout: self
+        fetchDepth: 0
+
+      - task: NodeTool@0
+        displayName: Use Node.js 22
+        inputs:
+          versionSpec: "22.x"
+
+      - script: |
+          cd "${{ parameters.servicePath }}"
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm run lint
+          node --test --experimental-test-coverage --test-reporter=junit --test-reporter-destination=test-results.xml
+        displayName: Install Dependencies, Lint & Unit Test with Coverage
+
+      - task: PublishTestResults@2
+        displayName: Publish Unit Test Results
+        condition: always()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: "${{ parameters.servicePath }}/test-results.xml"
+          testRunTitle: "${{ parameters.serviceName }} Unit Tests"
+
+      - task: SonarQubePrepare@6
+        displayName: Prepare SonarQube Analysis
+        inputs:
+          SonarQube: "${{ parameters.sonarServiceConnection }}"
+          scannerMode: CLI
+          configMode: manual
+          cliProjectKey: "enterprise-aks-${{ parameters.serviceName }}"
+          cliProjectName: "Enterprise AKS - ${{ parameters.serviceName }}"
+          cliSources: "${{ parameters.servicePath }}/src"
+
+      - task: SonarQubeAnalyze@6
+        displayName: Run SonarQube Scan
+
+      - task: SonarQubePublish@6
+        displayName: Publish SonarQube Quality Gate
+        inputs:
+          pollingTimeoutSec: "300"
+
+      - script: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy fs --exit-code 1 --severity HIGH,CRITICAL --no-progress "${{ parameters.servicePath }}"
+        displayName: Trivy Filesystem & Dependency Vulnerability Scan
+
+      - task: Docker@2
+        displayName: Build Container Image (${{ parameters.imageTag }})
+        inputs:
+          command: build
+          repository: "${{ parameters.acrLoginServer }}/${{ parameters.imageName }}"
+          dockerfile: "${{ parameters.servicePath }}/Dockerfile"
+          buildContext: "${{ parameters.servicePath }}"
+          tags: |
+            ${{ parameters.imageTag }}
+            sha-$(Build.SourceVersion)
+
+      - script: |
+          trivy image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --no-progress "${{ parameters.acrLoginServer }}/${{ parameters.imageName }}:${{ parameters.imageTag }}"
+        displayName: Trivy Container Image Security Gate
+
+      - ${{ if eq(parameters.pushImage, true) }}:
+          - task: Docker@2
+            displayName: Push Immutable Image to ACR
+            inputs:
+              command: push
+              containerRegistry: "${{ parameters.acrServiceConnection }}"
+              repository: "${{ parameters.imageName }}"
+              tags: |
+                ${{ parameters.imageTag }}
+                sha-$(Build.SourceVersion)

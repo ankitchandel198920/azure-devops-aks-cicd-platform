@@ -1,0 +1,56 @@
+global:
+  acrLoginServer: "acrenterpriseplaceholder.azurecr.io"
+  environment: dev
+
+serviceAccount:
+  create: true
+  name: microservices-workload-sa
+  workloadIdentityClientId: ""
+
+keyVault:
+  enabled: true
+  name: "kv-enterprise-placeholder"
+  tenantId: "00000000-0000-0000-0000-000000000000"
+  secretName: "backend-api-token"
+
+backend:
+  name: orders-backend
+  replicaCount: 2
+  image:
+    repository: microservices/orders-backend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+
+frontend:
+  name: web-frontend
+  replicaCount: 2
+  image:
+    repository: microservices/web-frontend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: microservices.example.internal

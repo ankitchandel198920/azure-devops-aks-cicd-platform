@@ -1,0 +1,116 @@
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: ci_pipeline
+      source: Enterprise-Microservices-CI
+      trigger:
+        branches:
+          include:
+            - main
+
+variables:
+  - group: enterprise-cd-shared-vars
+  - name: IMAGE_TAG
+    value: "$(resources.pipeline.ci_pipeline.runID)-$(resources.pipeline.ci_pipeline.sourceCommit)"
+  - name: RELEASE_NAME
+    value: enterprise-microservices
+
+stages:
+  - stage: Deploy_Dev
+    displayName: CD - Dev Environment
+    jobs:
+      - template: templates/cd-aks-helm-deploy.yml
+        parameters:
+          environmentName: aks-dev
+          azureSubscription: sc-azure-dev-wif
+          resourceGroup: $(DEV_RESOURCE_GROUP)
+          aksClusterName: $(DEV_AKS_CLUSTER)
+          keyVaultName: $(DEV_KEY_VAULT)
+          namespace: microservices-dev
+          releaseName: $(RELEASE_NAME)
+          acrLoginServer: $(ACR_LOGIN_SERVER)
+          imageTag: $(IMAGE_TAG)
+          valuesFile: charts/microservices-app/values-dev.yaml
+
+      - template: templates/smoke-test.yml
+        parameters:
+          azureSubscription: sc-azure-dev-wif
+          resourceGroup: $(DEV_RESOURCE_GROUP)
+          aksClusterName: $(DEV_AKS_CLUSTER)
+          namespace: microservices-dev
+          releaseName: $(RELEASE_NAME)
+          dependsOnJob: Deploy_aks_dev
+
+  - stage: Deploy_Staging
+    displayName: CD - Staging Environment
+    dependsOn: Deploy_Dev
+    condition: succeeded()
+    jobs:
+      - template: templates/cd-aks-helm-deploy.yml
+        parameters:
+          environmentName: aks-staging
+          azureSubscription: sc-azure-staging-wif
+          resourceGroup: $(STAGING_RESOURCE_GROUP)
+          aksClusterName: $(STAGING_AKS_CLUSTER)
+          keyVaultName: $(STAGING_KEY_VAULT)
+          namespace: microservices-staging
+          releaseName: $(RELEASE_NAME)
+          acrLoginServer: $(ACR_LOGIN_SERVER)
+          imageTag: $(IMAGE_TAG)
+          valuesFile: charts/microservices-app/values-staging.yaml
+
+      - template: templates/smoke-test.yml
+        parameters:
+          azureSubscription: sc-azure-staging-wif
+          resourceGroup: $(STAGING_RESOURCE_GROUP)
+          aksClusterName: $(STAGING_AKS_CLUSTER)
+          namespace: microservices-staging
+          releaseName: $(RELEASE_NAME)
+          dependsOnJob: Deploy_aks_staging
+
+  - stage: Deploy_Production
+    displayName: CD - Production (Approval Gated)
+    dependsOn: Deploy_Staging
+    condition: succeeded()
+    jobs:
+      # Azure DevOps Environment 'aks-prod' enforces mandatory manual approvals & checks
+      - template: templates/cd-aks-helm-deploy.yml
+        parameters:
+          environmentName: aks-prod
+          azureSubscription: sc-azure-prod-wif
+          resourceGroup: $(PROD_RESOURCE_GROUP)
+          aksClusterName: $(PROD_AKS_CLUSTER)
+          keyVaultName: $(PROD_KEY_VAULT)
+          namespace: microservices-prod
+          releaseName: $(RELEASE_NAME)
+          acrLoginServer: $(ACR_LOGIN_SERVER)
+          imageTag: $(IMAGE_TAG)
+          valuesFile: charts/microservices-app/values-prod.yaml
+
+      - template: templates/smoke-test.yml
+        parameters:
+          azureSubscription: sc-azure-prod-wif
+          resourceGroup: $(PROD_RESOURCE_GROUP)
+          aksClusterName: $(PROD_AKS_CLUSTER)
+          namespace: microservices-prod
+          releaseName: $(RELEASE_NAME)
+          dependsOnJob: Deploy_aks_prod
+
+      - template: templates/notify-status.yml
+        parameters:
+          stageName: Production_Deployment
+          statusMessage: "Production Helm rollout completed or rolled back automatically on failure"
+
+  - stage: Notify_Pipeline_Failure
+    displayName: Handle Pipeline Failure Notification
+    dependsOn:
+      - Deploy_Dev
+      - Deploy_Staging
+      - Deploy_Production
+    condition: failed()
+    jobs:
+      - template: templates/notify-status.yml
+        parameters:
+          stageName: Failure_Alert
+          statusMessage: "ALERT: CI/CD deployment pipeline failed. Review logs and verify Helm rollback status."

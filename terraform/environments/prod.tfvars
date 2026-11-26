@@ -1,0 +1,19 @@
+environment         = "prod"
+location            = "eastus2"
+acr_name            = "acrakscicdprd001"
+acr_sku             = "Premium"
+acr_public_access   = true
+acr_zone_redundancy = true
+system_node_count   = 3
+system_min_count    = 3
+system_max_count    = 6
+system_vm_size      = "Standard_D4s_v3"
+app_namespace       = "microservices-prod"
+key_vault_name      = "kv-aks-cicd-prd-001"
+kv_purge_protection = true
+log_retention_days  = 90
+alert_email         = "devops-prod-oncall@example.com"
+tags = {
+  CostCenter = "Production"
+  Owner      = "PlatformTeam"
+}

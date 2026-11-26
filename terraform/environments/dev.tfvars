@@ -1,0 +1,19 @@
+environment         = "dev"
+location            = "eastus2"
+acr_name            = "acrakscicddev001"
+acr_sku             = "Standard"
+acr_public_access   = true
+acr_zone_redundancy = false
+system_node_count   = 2
+system_min_count    = 1
+system_max_count    = 3
+system_vm_size      = "Standard_B2s"
+app_namespace       = "microservices-dev"
+key_vault_name      = "kv-aks-cicd-dev-001"
+kv_purge_protection = false
+log_retention_days  = 30
+alert_email         = "devops-dev-alerts@example.com"
+tags = {
+  CostCenter = "Engineering"
+  Owner      = "PlatformTeam"
+}

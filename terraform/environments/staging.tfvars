@@ -1,0 +1,19 @@
+environment         = "staging"
+location            = "eastus2"
+acr_name            = "acrakscicdstg001"
+acr_sku             = "Standard"
+acr_public_access   = true
+acr_zone_redundancy = false
+system_node_count   = 2
+system_min_count    = 2
+system_max_count    = 4
+system_vm_size      = "Standard_D2s_v3"
+app_namespace       = "microservices-staging"
+key_vault_name      = "kv-aks-cicd-stg-001"
+kv_purge_protection = true
+log_retention_days  = 30
+alert_email         = "devops-stg-alerts@example.com"
+tags = {
+  CostCenter = "Engineering"
+  Owner      = "PlatformTeam"
+}

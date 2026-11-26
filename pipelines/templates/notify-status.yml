@@ -1,0 +1,32 @@
+parameters:
+  - name: stageName
+    type: string
+  - name: statusMessage
+    type: string
+  - name: webhookVariableName
+    type: string
+    default: TEAMS_ALERT_WEBHOOK_URL
+
+jobs:
+  - job: Notify_${{ parameters.stageName }}
+    displayName: "Notify Pipeline Status (${{ parameters.stageName }})"
+    condition: always()
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - script: |
+          STATUS="$(Agent.JobStatus)"
+          PAYLOAD=$(cat <<EOF
+          {
+            "title": "Azure DevOps Pipeline Notification - ${{ parameters.stageName }}",
+            "text": "${{ parameters.statusMessage }} | Build: $(Build.BuildNumber) | Branch: $(Build.SourceBranchName) | Commit: $(Build.SourceVersion) | Status: ${STATUS}"
+          }
+          EOF
+          )
+          echo "$PAYLOAD"
+          if [ -n "${{ parameters.webhookVariableName }}" ] && [ -n "${!parameters.webhookVariableName:-}" ]; then
+            curl -sf -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "${!parameters.webhookVariableName}"
+          else
+            echo "Webhook variable not configured; logged notification payload to pipeline stdout."
+          fi
+        displayName: Dispatch Deployment Notification

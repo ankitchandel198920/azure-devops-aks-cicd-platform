@@ -1,0 +1,60 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+      - release/*
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - name: SONAR_SERVICE_CONNECTION
+    value: sc-sonarqube-enterprise
+
+stages:
+  - stage: PR_Code_And_IaC_Validation
+    displayName: PR Quality, Security & IaC Validation
+    jobs:
+      - job: Validate_Services_And_Charts
+        displayName: Lint, Unit Tests, Helm & Trivy Config Scan
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "22.x"
+
+          - script: |
+              set -euo pipefail
+              for svc in services/backend services/frontend; do
+                (cd "$svc" && npm run lint && node --test --experimental-test-coverage)
+              done
+            displayName: Lint & Run Microservices Unit Tests
+
+          - task: HelmInstaller@1
+            inputs:
+              helmVersionToInstall: latest
+
+          - script: |
+              set -euo pipefail
+              helm lint ./charts/microservices-app
+              helm template pr-check ./charts/microservices-app -f ./charts/microservices-app/values-dev.yaml > /dev/null
+              helm template pr-check ./charts/microservices-app -f ./charts/microservices-app/values-prod.yaml > /dev/null
+            displayName: Helm Lint & Multi-Environment Template Render
+
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: "1.10.5"
+
+          - script: |
+              set -euo pipefail
+              terraform fmt -check -recursive ./terraform
+              for env in dev staging prod; do
+                (cd "terraform/environments/${env}" && terraform init -backend=false && terraform validate)
+              done
+            displayName: Terraform Format & Validate Across Environments
+
+          - script: |
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              trivy config --exit-code 1 --severity HIGH,CRITICAL ./terraform ./charts ./services
+            displayName: Trivy IaC & Dockerfile Misconfiguration Scan

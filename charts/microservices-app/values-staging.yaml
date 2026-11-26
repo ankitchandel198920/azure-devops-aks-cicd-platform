@@ -1,0 +1,15 @@
+global:
+  environment: staging
+
+backend:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+
+frontend:
+  replicaCount: 2
+
+ingress:
+  host: staging.microservices.example.internal
